@@ -6,134 +6,83 @@
 
 module EtraxNFT where 
 
-import qualified PlutusTx
-import           PlutusTx.Prelude           (Bool (..) , Eq ((==)), any, traceIfFalse, ($), (&&))
+import           PlutusTx                   (compile, unstableMakeIsData)
+import           PlutusTx.Prelude           (Bool (..), Eq ((==)), traceIfFalse, ($), (&&))
 import           Plutus.V1.Ledger.Value     (flattenValue)
-import           Plutus.V2.Ledger.Api       (BuiltinData, CurrencySymbol,
+import           Plutus.V2.Ledger.Api       (BuiltinData,
                                              MintingPolicy,
+                                             PubKeyHash,
                                              ScriptContext (scriptContextTxInfo),
-                                             TokenName (unTokenName),
-                                             TxId (TxId, getTxId),
-                                             TxInInfo (txInInfoOutRef),
-                                             TxInfo (txInfoInputs, txInfoMint),
-                                             TxOutRef (TxOutRef, txOutRefId, txOutRefIdx),
+                                             TxInfo (txInfoMint),
                                              mkMintingPolicyScript)
-import           Plutus.V2.Ledger.Api     as PlutusV2
 import           Prelude              (IO)
 import           Mappers          (wrapPolicy)
-import           Serialization    (currencySymbol, writePolicyToFile, writeDataToFile) 
-import GHC.Base (IO)
+import           Serialization    (writePolicyToFile, writeDataToFile) 
+import Plutus.V2.Ledger.Contexts (txSignedBy)
 
 --THE ON-CHAIN CODE
 
-{-# INLINABLE ieaNFT #-}
-ieaNFT :: TxOutRef -> () -> ScriptContext -> Bool
-ieaNFT utxo _ sContext = traceIfFalse "UTxO not available!" hasUTxO &&
-                         traceIfFalse "There can be only ONE!" checkMintedAmount
-        
+data EtraxParams = EtraxParams {
+    pkh :: PubKeyHash,
+    isMinting :: Bool
+}
+
+unstableMakeIsData ''EtraxParams
+
+{-# INLINABLE etraxNFT #-}
+etraxNFT :: EtraxParams -> ScriptContext -> Bool
+etraxNFT params sContext = if isMinting params then forging else burning        
     where
-        hasUTxO :: Bool
-        hasUTxO = any (\x -> txInInfoOutRef x == utxo) $ txInfoInputs info
-
-        checkMintedAmount :: Bool
-        checkMintedAmount = case flattenValue (txInfoMint info) of
-            [(_, _, amt)] -> amt == 1
-            _             -> False
-
-        info :: TxInfo
-        info = scriptContextTxInfo sContext
-
-
-{-# INLINABLE eaNFT #-}
-eaNFT :: TxOutRef -> Bool -> ScriptContext -> Bool
-eaNFT utxo category sContext = if category then forging else burning        
-    where
-        forging = traceIfFalse "UTxO not available!" hasUTxO &&
-                  traceIfFalse "There can be only ONE!" checkMintedAmount
+        forging = traceIfFalse "PubKeyHash provided doesn't match!" isPubKey &&
+                  traceIfFalse "Hold your horses.... Only 1 token at a time!" checkMintedAmount
 
         burning = traceIfFalse "Only burning one, nothing more, nothing less!" checkBurnedAmount 
 
-        hasUTxO :: Bool
-        hasUTxO = any (\x -> txInInfoOutRef x == utxo) $ txInfoInputs info
+        info :: TxInfo
+        info = scriptContextTxInfo sContext
+        
+        isPubKey :: Bool
+        isPubKey = txSignedBy info $ pkh params
 
         checkMintedAmount :: Bool
-        checkMintedAmount = case flattenValue (txInfoMint info) of
+        checkMintedAmount = case Plutus.V1.Ledger.Value.flattenValue (txInfoMint info) of
             [(_, _, amt)] -> amt == 1
             _             -> False
 
         checkBurnedAmount :: Bool
-        checkBurnedAmount = case flattenValue (txInfoMint info) of
+        checkBurnedAmount = case Plutus.V1.Ledger.Value.flattenValue (txInfoMint info) of
             [(_, _, amt)] -> amt == -1
             _             -> False
 
-        info :: TxInfo
-        info = scriptContextTxInfo sContext
 
-{-# INLINABLE wrappediEAnftPolicy #-}
-wrappediEAnftPolicy :: BuiltinData -> BuiltinData -> BuiltinData  -> BuiltinData -> ()
-wrappediEAnftPolicy utxoId utxoIx = wrapPolicy $ ieaNFT utxo
-    where
-        utxo :: TxOutRef
-        utxo = TxOutRef (TxId $ PlutusTx.unsafeFromBuiltinData utxoId) (PlutusTx.unsafeFromBuiltinData utxoIx)
+{-# INLINABLE wrappedEtraxNFTPolicy #-}
+wrappedEtraxNFTPolicy ::BuiltinData  -> BuiltinData -> ()
+wrappedEtraxNFTPolicy = wrapPolicy etraxNFT
+    
 
-ieaNFTcode :: PlutusTx.CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> BuiltinData -> ())
-ieaNFTcode = $$(PlutusTx.compile [|| wrappediEAnftPolicy ||])
 
-ieaNFTPolicy :: TxOutRef -> MintingPolicy
-ieaNFTPolicy utxoRef = mkMintingPolicyScript $
-                          ieaNFTcode
-                           `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData $ getTxId $ txOutRefId utxoRef)
-                           `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData $ txOutRefIdx utxoRef)
 
--- The complete minting policy validator version
-
-wrappedEAnftPolicy :: BuiltinData -> BuiltinData -> BuiltinData  -> BuiltinData -> ()
-wrappedEAnftPolicy utxoId utxoIx = wrapPolicy $ eaNFT utxo
-    where
-        utxo :: TxOutRef
-        utxo = TxOutRef (TxId $ PlutusTx.unsafeFromBuiltinData utxoId) (PlutusTx.unsafeFromBuiltinData utxoIx)
-
-eaNFTcode :: PlutusTx.CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> BuiltinData -> ())
-eaNFTcode = $$(PlutusTx.compile [|| wrappedEAnftPolicy ||])
-
-eaNFTPolicy :: TxOutRef -> MintingPolicy
-eaNFTPolicy utxoRef = mkMintingPolicyScript $
-                          eaNFTcode
-                           `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData $ getTxId $ txOutRefId utxoRef)
-                           `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData $ txOutRefIdx utxoRef)
-
-------------------------------------------------------------------------------------------
+etraxNFTPolicy :: MintingPolicy
+etraxNFTPolicy = mkMintingPolicyScript $$(PlutusTx.compile [|| wrappedEtraxNFTPolicy ||])
 ------------------------------------------------------------------------------------------
 
 {- Serialised Scripts and Values -}
 
-param :: TxOutRef
-param  = PlutusV2.TxOutRef { txOutRefId = "3b3c87bc71d72d169af15bf7dd5f1793bc9a40ab6eadcf2d3b3cc66e8ae4de6a"
-                           , txOutRefIdx = 0}
-param2 :: TxOutRef
-param2  = PlutusV2.TxOutRef { txOutRefId = "cbe4eb5f4b9ac4be54bb75b2415fd1b0d29f4757e8dd0d86d5260d92c0264118"
-                           , txOutRefIdx = 0}
--- You have to provide your own UTxO TxID and Index on serialization of the minting policy validator.                       
+paramPkh :: PubKeyHash
+paramPkh  = "32af4aba093e4d53e4e5f0dc6cd5d23703d89b852e7d54babdb48b81"
 
-saveieaNFTPolicy :: IO ()
-saveieaNFTPolicy =  writePolicyToFile "./testnet/ieaNFT.plutus" $ ieaNFTPolicy param   
-
-saveeaNFTPolicy :: IO ()
-saveeaNFTPolicy =  writePolicyToFile "./testnet/eaNFT.plutus" $ eaNFTPolicy param2   
-
-saveUnit :: IO ()
-saveUnit = writeDataToFile "./testnet/unit.json" ()
+saveEtraxNFTPolicy :: IO ()
+saveEtraxNFTPolicy =  writePolicyToFile "./testnet/etraNFT.plutus" etraxNFTPolicy
 
 saveRedeemerForging :: IO ()
-saveRedeemerForging = writeDataToFile "./testnet/Forge.json" True
+saveRedeemerForging = writeDataToFile "./testnet/Forge.json" $ EtraxParams paramPkh True
 
 saveRedeemerBurning :: IO ()
-saveRedeemerBurning = writeDataToFile "./testnet/Burn.json" False
+saveRedeemerBurning = writeDataToFile "./testnet/Burn.json" $ EtraxParams paramPkh True
 
 saveAll :: IO ()
 saveAll = do
-            saveieaNFTPolicy
-            saveeaNFTPolicy
-            saveUnit
+            
+            saveEtraxNFTPolicy
             saveRedeemerForging
             saveRedeemerBurning
