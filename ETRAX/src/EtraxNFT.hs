@@ -36,7 +36,8 @@ etraxNFT params sContext = if isMinting params then forging else burning
         forging = traceIfFalse "PubKeyHash provided doesn't match!" isPubKey &&
                   traceIfFalse "Hold your horses.... Only 1 token at a time!" checkMintedAmount
 
-        burning = traceIfFalse "Only burning one, nothing more, nothing less!" checkBurnedAmount 
+        burning = traceIfFalse "PubKeyHash provided doesn't match!" isPubKey &&
+                  traceIfFalse "Only burning one, nothing more, nothing less!" checkBurnedAmount 
 
         info :: TxInfo
         info = scriptContextTxInfo sContext
@@ -59,9 +60,6 @@ etraxNFT params sContext = if isMinting params then forging else burning
 wrappedEtraxNFTPolicy ::BuiltinData  -> BuiltinData -> ()
 wrappedEtraxNFTPolicy = wrapPolicy etraxNFT
     
-
-
-
 etraxNFTPolicy :: MintingPolicy
 etraxNFTPolicy = mkMintingPolicyScript $$(PlutusTx.compile [|| wrappedEtraxNFTPolicy ||])
 ------------------------------------------------------------------------------------------
@@ -72,7 +70,7 @@ paramPkh :: PubKeyHash
 paramPkh  = "32af4aba093e4d53e4e5f0dc6cd5d23703d89b852e7d54babdb48b81"
 
 saveEtraxNFTPolicy :: IO ()
-saveEtraxNFTPolicy =  writePolicyToFile "./testnet/etraNFT.plutus" etraxNFTPolicy
+saveEtraxNFTPolicy =  writePolicyToFile "./testnet/etraNFT.policy" etraxNFTPolicy
 
 saveRedeemerForging :: IO ()
 saveRedeemerForging = writeDataToFile "./testnet/Forge.json" $ EtraxParams paramPkh True
