@@ -1,10 +1,10 @@
-utxoin="6c887bcc55981818be601f271b1c2bfdd00e1f5fc62acb4d7c70e3c64d48c6fe#1"
+utxoin="f3262bca09182cd2bca746ab68fa221ca5f5954e82b5cc19fe95183558fe1378#1"
 policyid=$(cat etraxNFT.pid)
 address=$(cat ../../../Addresses/myAddr1.addr)
 output="1163700"
 tokenamount="1"
 tokenname=$(echo -n "EtraxNFT" | xxd -ps | tr -d '\n')
-collateral="6c887bcc55981818be601f271b1c2bfdd00e1f5fc62acb4d7c70e3c64d48c6fe#1"
+collateral="f3262bca09182cd2bca746ab68fa221ca5f5954e82b5cc19fe95183558fe1378#1"
 signerPKH="32af4aba093e4d53e4e5f0dc6cd5d23703d89b852e7d54babdb48b81"
 PREVIEW="--testnet-magic 2"
 

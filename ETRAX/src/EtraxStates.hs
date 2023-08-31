@@ -7,7 +7,7 @@ module EtraxStates where
 
 --PlutusTx 
 import                  PlutusTx                       (BuiltinData, compile, unstableMakeIsData, makeIsDataIndexed)
-import                  PlutusTx.Prelude               (traceIfFalse, otherwise, (==), Bool (..), Integer, ($), (>))
+import                  PlutusTx.Prelude               (traceIfFalse, otherwise, (==),elem, Bool (..), Integer, ($), (>))
 import                  Plutus.V1.Ledger.Value      as PlutusV1
 import                  Plutus.V1.Ledger.Interval      (contains, to) 
 import                  Plutus.V2.Ledger.Api        as PlutusV2
@@ -21,31 +21,30 @@ import                  Prelude                         (IO)
 newtype DatumStates = State Integer
 unstableMakeIsData ''DatumStates
 
-data ActionsRedeemer = Owner PlutusV2.PubKeyHash | Address Text | NFT Text
-unstableMakeIsData '' ActionsRedeemer
+data EtraxRedeemer = EtraxRedeemer {owner :: PlutusV2.PubKeyHash,
+                                    address :: BuiltinByteString
+                                    }
+unstableMakeIsData ''EtraxRedeemer
 
 {-# INLINABLE conditionator #-}
-conditionator :: DatumStates -> ScriptContext -> Bool
+conditionator :: DatumStates -> EtraxRedeemer -> ScriptContext -> Bool
 conditionator datum redeemer sContext = case redeemer of
-                                         Owner   -> traceIfFalse    "Not signed properly!"  signedByOwner
-                                         Address -> traceIfFalse    "Incorrect address. You can only send to burn script address or same address for state change" isAddressCorrect                                         
-                                         NFT     -> traceIfFalse    "Price is not covered"  priceIsCovered
+                                         owner   -> traceIfFalse    "Not signed properly!"  signedByOwner
+                                         address -> traceIfFalse    "Incorrect address. You can only send to burn script address or same address for state change" isAddressCorrect                                         
+                                         
     where
 
         info :: TxInfo
         info = scriptContextTxInfo sContext
 
         signedByOwner :: Bool
-        signedByOwner = txSignedBy info $ owner Owner
+        signedByOwner = txSignedBy info $ owner redeemer
 
         isAddressCorrect :: Bool
-        isAddressCorrect = contains ()
-
-        priceIsCovered :: Bool
-        priceIsCovered =  assetClassValueOf (valueSpent info)  (AssetClass (adaSymbol,adaToken)) > price datum
-
+        isAddressCorrect = elem $ address redeemer $ txInfoOutputs info
         
-
+        isNFTPresent :: Bool
+        isNFTPresent = contains "b2cf511eb261780ce184788d56bd6a38dabfb985a28487c7872edf8c" $ txInfoInputs info  
 
 mappedCommonConditions :: BuiltinData -> BuiltinData -> BuiltinData -> ()
 mappedCommonConditions = wrapValidator conditionator
@@ -61,26 +60,14 @@ conditionsValidator =  PlutusV2.mkValidatorScript $$(PlutusTx.compile [|| mapped
 saveConditionsValidator :: IO ()
 saveConditionsValidator =  writeValidatorToFile "./testnet/conditionator.plutus" conditionsValidator
 
-saveUnit :: IO ()
-saveUnit = writeDataToFile "./testnet/unit.json" ()
-
 saveDatum :: IO ()
-saveDatum  = writeDataToFile "./testnet/datum.json" (Conditions "32af4aba093e4d53e4e5f0dc6cd5d23703d89b852e7d54babdb48b81" 1691774814000 50)
+saveDatum  = writeDataToFile "./testnet/datum.json" (State 1)
 
 saveRedeemerOwner :: IO ()
-saveRedeemerOwner = writeDataToFile "./testnet/redeemOwner.json" Owner
-
-saveRedeemerTime :: IO ()
-saveRedeemerTime = writeDataToFile "./testnet/redeemTime.json" Time
-
-saveRedeemerPrice :: IO ()
-saveRedeemerPrice = writeDataToFile "./testnet/redeemPrice.json" Price
+saveRedeemerOwner = writeDataToFile "./testnet/redeemOwner.json" (EtraxRedeemer "32af4aba093e4d53e4e5f0dc6cd5d23703d89b852e7d54babdb48b81","addr_test1qqe27j46pyly65lyuhcdcmx46gms8kyms5h86496hk6ghqgf87zy2chtpsk4y6hk6czt6xjh3ej8gxreystr6en7wqzssrl3lc")
 
 saveAll :: IO ()
 saveAll = do
             saveConditionsValidator
-            saveUnit
-            saveDatum
-            saveRedeemerOwner
-            saveRedeemerPrice
-            saveRedeemerTime
+            
+            
