@@ -9,6 +9,7 @@ module EtraxNFT where
 import           PlutusTx                   (compile, unstableMakeIsData)
 import           PlutusTx.Prelude           (Bool (..), Eq ((==)), traceIfFalse, ($), (&&))
 import           Plutus.V1.Ledger.Value     (flattenValue)
+import           Plutus.V1.Ledger.Interval  ()
 import           Plutus.V2.Ledger.Api       (BuiltinData,
                                              MintingPolicy,
                                              PubKeyHash,
@@ -23,14 +24,14 @@ import Plutus.V2.Ledger.Contexts (txSignedBy)
 --THE ON-CHAIN CODE
 
 data EtraxParams = EtraxParams {
-    pkh :: PubKeyHash,
+    pkh :: Plutus.V2.Ledger.Api.PubKeyHash,
     isMinting :: Bool
 }
 
 unstableMakeIsData ''EtraxParams
 
 {-# INLINABLE etraxNFT #-}
-etraxNFT :: EtraxParams -> ScriptContext -> Bool
+etraxNFT :: EtraxParams -> Plutus.V2.Ledger.Api.ScriptContext -> Bool
 etraxNFT params sContext = if isMinting params then forging else burning        
     where
         forging = traceIfFalse "PubKeyHash provided doesn't match!" isPubKey &&
@@ -39,34 +40,34 @@ etraxNFT params sContext = if isMinting params then forging else burning
         burning = traceIfFalse "PubKeyHash provided doesn't match!" isPubKey &&
                   traceIfFalse "Only burning one, nothing more, nothing less!" checkBurnedAmount 
 
-        info :: TxInfo
-        info = scriptContextTxInfo sContext
+        info :: Plutus.V2.Ledger.Api.TxInfo
+        info = Plutus.V2.Ledger.Api.scriptContextTxInfo sContext
         
         isPubKey :: Bool
         isPubKey = txSignedBy info $ pkh params
 
         checkMintedAmount :: Bool
-        checkMintedAmount = case Plutus.V1.Ledger.Value.flattenValue (txInfoMint info) of
+        checkMintedAmount = case Plutus.V1.Ledger.Value.flattenValue (Plutus.V2.Ledger.Api.txInfoMint info) of
             [(_, _, amt)] -> amt == 1
             _             -> False
 
         checkBurnedAmount :: Bool
-        checkBurnedAmount = case Plutus.V1.Ledger.Value.flattenValue (txInfoMint info) of
+        checkBurnedAmount = case Plutus.V1.Ledger.Value.flattenValue (Plutus.V2.Ledger.Api.txInfoMint info) of
             [(_, _, amt)] -> amt == -1
             _             -> False
 
 
 {-# INLINABLE wrappedEtraxNFTPolicy #-}
-wrappedEtraxNFTPolicy ::BuiltinData  -> BuiltinData -> ()
+wrappedEtraxNFTPolicy ::Plutus.V2.Ledger.Api.BuiltinData  -> Plutus.V2.Ledger.Api.BuiltinData -> ()
 wrappedEtraxNFTPolicy = wrapPolicy etraxNFT
     
-etraxNFTPolicy :: MintingPolicy
-etraxNFTPolicy = mkMintingPolicyScript $$(PlutusTx.compile [|| wrappedEtraxNFTPolicy ||])
+etraxNFTPolicy :: Plutus.V2.Ledger.Api.MintingPolicy
+etraxNFTPolicy = Plutus.V2.Ledger.Api.mkMintingPolicyScript $$(PlutusTx.compile [|| wrappedEtraxNFTPolicy ||])
 ------------------------------------------------------------------------------------------
 
 {- Serialised Scripts and Values -}
 
-paramPkh :: PubKeyHash
+paramPkh :: Plutus.V2.Ledger.Api.PubKeyHash
 paramPkh  = "32af4aba093e4d53e4e5f0dc6cd5d23703d89b852e7d54babdb48b81"
 
 saveEtraxNFTPolicy :: IO ()
